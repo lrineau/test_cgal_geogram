@@ -1,28 +1,31 @@
-#define CGAL_PROFILE
-#include <geogram/basic/common.h>
-#include <geogram/basic/logger.h>
-#include <geogram/basic/command_line.h>
-#include <geogram/basic/command_line_args.h>
-#include <geogram/basic/stopwatch.h>
-#include <geogram/basic/file_system.h>
-#include <geogram/mesh/mesh.h>
-#include <geogram/mesh/mesh_io.h>
-#include <geogram/mesh/mesh_reorder.h>
-#include <geogram/delaunay/delaunay.h>
-
-#include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
-#include <CGAL/IO/Triangulation_off_ostream_3.h>
-#include <CGAL/Delaunay_triangulation_3.h>
-#include <CGAL/Point_set_3.h>
-#include <CGAL/Point_set_3/IO.h>
-#include <CGAL/Timer.h>
+//#define CGAL_PROFILE
+#ifndef ONLY_CGAL
+#  include <geogram/basic/common.h>
+#  include <geogram/basic/logger.h>
+#  include <geogram/basic/command_line.h>
+#  include <geogram/basic/command_line_args.h>
+#  include <geogram/basic/stopwatch.h>
+#  include <geogram/basic/file_system.h>
+#  include <geogram/mesh/mesh.h>
+#  include <geogram/mesh/mesh_io.h>
+#  include <geogram/mesh/mesh_reorder.h>
+#  include <geogram/delaunay/delaunay.h>
+#endif
+#ifndef ONLY_GEOGRAM
+#  include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
+#  include <CGAL/IO/Triangulation_off_ostream_3.h>
+#  include <CGAL/Delaunay_triangulation_3.h>
+#  include <CGAL/Point_set_3.h>
+#  include <CGAL/Point_set_3/IO.h>
+#  include <CGAL/Timer.h>
+#endif
 #include <algorithm>
 
 
 #include <iostream>
 #include <fstream>
 
-
+#ifndef ONLY_CGAL
 namespace {
     using namespace GEO;
 
@@ -207,18 +210,16 @@ namespace {
     }
 
 }
+#endif // !ONLY_CGAL
 
+#ifndef ONLY_GEOGRAM
+CGAL::Timer timer;
+#endif // ! ONLY_GEOGRAM
 
-int main(int argc, char** argv) {
+#ifndef ONLY_CGAL
+int bench_geogram(int argc, char** argv)
+{
     using namespace GEO;
-
-  CGAL::Timer timer;
-  /*--------------
-  | GEOGRAM PART |
-  ---------------*/
-
-  std::string points_filename;
-  {
     // Needs to be called once.
     GEO::initialize();
 
@@ -248,23 +249,16 @@ int main(int argc, char** argv) {
         }
 
 
-        points_filename = filenames[0];
+        std::string points_filename = filenames[0];
 
         std::string output_filename =
-            filenames.size() >= 2 ? filenames[1] : std::string("out.mesh");
+            filenames.size() >= 2 ? filenames[1] : std::string("none");
 
         bool output = (output_filename != "none");
 
         Logger::div("Data I/O");
 
         Logger::out("I/O") << "Output = " << output_filename << std::endl;
-
-        // Note: To create a parallel Delaunay 3D, one can use directly:
-        // Delaunay_var delaunay = Delaunay::create(3,"PDEL") instead
-        // of the line below (that uses the command line to select the
-        // implementation of Delaunay).
-
-        Delaunay_var delaunay = Delaunay::create(3, "BDEL");
 
         vector<double> points;
 
@@ -279,37 +273,54 @@ int main(int argc, char** argv) {
 
         double time = 0.0;
         {
+#ifndef ONLY_GEOGRAM
           timer.start();                                                              // <---- Start timer
-            Stopwatch Wdel("Delaunay");
-            // Note: this does not transfer ownership of memory, caller
-            // is still responsible of the memory of the points (here the
-            // vector<double>). No memory is copied, Delaunay just keeps
-            // a pointer.
-            delaunay->set_vertices(nb_points, points.data());
-            time = Wdel.elapsed_time();
-            timer.stop();                                                           //<------ STOP timer
+#endif // ! ONLY_GEOGRAM
+          Stopwatch Wdel("Delaunay");
+          
+          // Note: To create a parallel Delaunay 3D, one can use directly:
+          // Delaunay_var delaunay = Delaunay::create(3,"PDEL") instead
+          // of the line below (that uses the command line to select the
+          // implementation of Delaunay).
+          Delaunay_var delaunay = Delaunay::create(3, "BDEL");
+
+          // Note: this does not transfer ownership of memory, caller
+          // is still responsible of the memory of the points (here the
+          // vector<double>). No memory is copied, Delaunay just keeps
+          // a pointer.
+          delaunay->set_vertices(nb_points, points.data());
+
+          time = Wdel.elapsed_time();
+#ifndef ONLY_GEOGRAM
+          timer.stop();                                                           //<------ STOP timer
+#endif // ! ONLY_GEOGRAM
+
+          Logger::out("Delaunay") << delaunay->nb_cells() << " tetrahedra"
+                                  << std::endl;
+
+          Logger::out("Delaunay") << double(delaunay->nb_cells()) / time
+                                  << " tetrahedra / second"
+                                  << std::endl;
+          if(output)
+            save_Delaunay(delaunay, output_filename);
         }
 
-        Logger::out("Delaunay") << delaunay->nb_cells() << " tetrahedra"
-            << std::endl;
-
-        Logger::out("Delaunay") << double(delaunay->nb_cells()) / time
-                                << " tetrahedra / second"
-                                << std::endl;
 
     }
     catch(const std::exception& e) {
         std::cerr << "Received an exception: " << e.what() << std::endl;
         return 1;
     }
-
-  }
-
+#ifndef ONLY_GEOGRAM
   std::cout<<"CGAL Timer says : "<<timer.time()<<"s."<<std::endl;
-    /*----------
-    | CGAL PART |
-    -------------*/
-  {
+#endif // ! ONLY_GEOGRAM
+  return 0;
+}
+#endif // ONLY_CGAL
+
+#ifndef ONLY_GEOGRAM
+void bench_cgal(std::string points_filename)
+{
     typedef CGAL::Exact_predicates_inexact_constructions_kernel K;
     typedef CGAL::Delaunay_triangulation_3<K>      Triangulation;
     typedef Triangulation::Point          Point;
@@ -328,10 +339,29 @@ int main(int argc, char** argv) {
 
     timer.stop();
     std::cout<<" CGAL Timer says :"<<timer.time()<<"s."<<std::endl;
-    std::ofstream off_stream("cgal_out.off");
-    CGAL::export_triangulation_3_to_off(off_stream, tr);
-  }
-    Logger::out("") << "Everything OK, Returning status 0" << std::endl;
-    return 0;
+    // std::ofstream off_stream("cgal_out.off");
+    // CGAL::export_triangulation_3_to_off(off_stream, tr);
 }
+#endif // !ONLY_GEOGRAM
 
+int main(int argc, char** argv) {
+
+#ifndef ONLY_CGAL
+  /*--------------
+  | GEOGRAM PART |
+  ---------------*/
+  bench_geogram(argc, argv);
+#endif // ONLY_CGAL
+
+#ifndef ONLY_GEOGRAM
+  CGAL_USE(argc);
+  CGAL_USE(argv);
+  /*----------
+  | CGAL PART |
+  -------------*/
+  std::string points_filename{argv[1]};
+  bench_cgal(points_filename);
+#endif // !ONLY_GEOGRAM
+
+  return 0;
+}
