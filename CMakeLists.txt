@@ -8,6 +8,7 @@ LIST(APPEND CMAKE_MODULE_PATH "/usr/local/lib/cmake/modules")
 
 find_package(Geogram REQUIRED)
 find_package(CGAL REQUIRED)
+find_package(benchmark)
 
 add_executable(_test geogram_bench.cpp )
 target_link_libraries(_test PRIVATE CGAL::CGAL Geogram::geogram)
@@ -20,3 +21,9 @@ add_executable(test_geogram geogram_bench.cpp )
 target_compile_definitions(test_geogram PRIVATE ONLY_GEOGRAM)
 target_link_libraries(test_geogram PRIVATE Geogram::geogram)
 
+if(TARGET benchmark::benchmark)
+  foreach(t _test test_cgal test_geogram)
+    target_link_libraries(${t} PRIVATE benchmark::benchmark)
+    target_compile_definitions(${t} PRIVATE USE_GOOGLE_BENCHMARK)
+  endforeach()
+endif()

@@ -21,6 +21,9 @@
 #endif
 #include <algorithm>
 
+#ifdef USE_GOOGLE_BENCHMARK
+#  include <benchmark/benchmark.h>
+#endif
 
 #include <iostream>
 #include <fstream>
@@ -216,14 +219,25 @@ namespace {
 CGAL::Timer timer;
 #endif // ! ONLY_GEOGRAM
 
+// global variables used by bench_geogram and bench_cgal
+int argc;
+char** argv;
+
+
 #ifndef ONLY_CGAL
-int bench_geogram(int argc, char** argv)
+static void bench_geogram(
+#if USE_GOOGLE_BENCHMARK
+                       benchmark::State& state
+#else
+                       std::array<int, 1> state = { 0 }
+#endif
+)
 {
     using namespace GEO;
     // Needs to be called once.
     GEO::initialize();
 
-    try {
+    {
         std::vector<std::string> filenames;
 
         CmdLine::import_arg_group("standard");
@@ -245,7 +259,7 @@ int bench_geogram(int argc, char** argv)
                 argc, argv, filenames, "pointsfile <outputfile|none>"
             )
         ) {
-            return 1;
+            ::exit(1);
         }
 
 
@@ -264,7 +278,7 @@ int bench_geogram(int argc, char** argv)
 
         if(!load_points(points_filename, 3, points)) {
             Logger::err("Delaunay") << "Could not load points" << std::endl;
-            return 1;
+            ::exit(1);
         }
         index_t nb_points = points.size() / 3;
 
@@ -272,7 +286,7 @@ int bench_geogram(int argc, char** argv)
             << "Loaded " << nb_points << " points" << std::endl;
 
         double time = 0.0;
-        {
+        for([[maybe_unused]] auto _ : state) {
 #ifndef ONLY_GEOGRAM
           timer.start();                                                              // <---- Start timer
 #endif // ! ONLY_GEOGRAM
@@ -304,23 +318,26 @@ int bench_geogram(int argc, char** argv)
           if(output)
             save_Delaunay(delaunay, output_filename);
         }
-
-
-    }
-    catch(const std::exception& e) {
-        std::cerr << "Received an exception: " << e.what() << std::endl;
-        return 1;
     }
 #ifndef ONLY_GEOGRAM
   std::cout<<"CGAL Timer says : "<<timer.time()<<"s."<<std::endl;
 #endif // ! ONLY_GEOGRAM
-  return 0;
 }
+#  ifdef USE_GOOGLE_BENCHMARK
+     BENCHMARK(bench_geogram)->Unit(benchmark::kMillisecond);
+#endif
 #endif // ONLY_CGAL
 
 #ifndef ONLY_GEOGRAM
-void bench_cgal(std::string points_filename)
+static void bench_cgal(
+#if USE_GOOGLE_BENCHMARK
+                       benchmark::State& state
+#else
+                       std::array<int, 1> state = { 0 }
+#endif
+)
 {
+    std::string points_filename = argv[1];
     typedef CGAL::Exact_predicates_inexact_constructions_kernel K;
     typedef CGAL::Delaunay_triangulation_3<K>      Triangulation;
     typedef Triangulation::Point          Point;
@@ -333,24 +350,36 @@ void bench_cgal(std::string points_filename)
     in >> ps;
     in.close();
     std::cout<<ps.size()<<" points were loaded."<<std::endl;
-    timer.reset();
-    timer.start();
-    Triangulation tr ( ps.points().begin(), ps.points().end());
-
-    timer.stop();
+    for([[maybe_unused]] auto _ : state)
+    {
+      timer.reset();
+      timer.start();
+      Triangulation tr ( ps.points().begin(), ps.points().end());
+      CGAL_USE(tr);
+      timer.stop();
+    }
     std::cout<<" CGAL Timer says :"<<timer.time()<<"s."<<std::endl;
     // std::ofstream off_stream("cgal_out.off");
     // CGAL::export_triangulation_3_to_off(off_stream, tr);
 }
+#  ifdef USE_GOOGLE_BENCHMARK
+     BENCHMARK(bench_cgal)->Unit(benchmark::kMillisecond);
+#endif
 #endif // !ONLY_GEOGRAM
 
 int main(int argc, char** argv) {
-
+#ifdef USE_GOOGLE_BENCHMARK
+  benchmark::Initialize(&argc, argv);
+#endif
+  ::argc = argc;
+  ::argv = argv;
 #ifndef ONLY_CGAL
   /*--------------
   | GEOGRAM PART |
   ---------------*/
-  bench_geogram(argc, argv);
+#  ifndef USE_GOOGLE_BENCHMARK
+  bench_geogram();
+#  endif
 #endif // ONLY_CGAL
 
 #ifndef ONLY_GEOGRAM
@@ -359,9 +388,12 @@ int main(int argc, char** argv) {
   /*----------
   | CGAL PART |
   -------------*/
-  std::string points_filename{argv[1]};
-  bench_cgal(points_filename);
+#  ifndef USE_GOOGLE_BENCHMARK
+  bench_cgal();
+#  endif
 #endif // !ONLY_GEOGRAM
-
+#if USE_GOOGLE_BENCHMARK
+  benchmark::RunSpecifiedBenchmarks();
+#endif
   return 0;
 }
