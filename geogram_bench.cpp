@@ -18,6 +18,7 @@
 #  include <CGAL/Point_set_3.h>
 #  include <CGAL/Point_set_3/IO.h>
 #  include <CGAL/Timer.h>
+#  include <CGAL/Random.h>
 #endif
 #include <algorithm>
 
@@ -334,7 +335,7 @@ static void bench_cgal(
     typedef Triangulation::Point          Point;
     typedef CGAL::Point_set_3<Point> Point_set;
 
-
+    CGAL::get_default_random() = CGAL::Random(0);
 
     Point_set ps;
     std::ifstream in (points_filename);
