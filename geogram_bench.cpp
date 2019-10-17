@@ -242,16 +242,6 @@ static void bench_geogram(
 
         CmdLine::import_arg_group("standard");
         CmdLine::import_arg_group("algo");
-
-        CmdLine::declare_arg(
-            "convex_hull", false,
-            "compute just the convex hull of the points"
-        );
-
-        CmdLine::declare_arg(
-            "dimension", 3, "3 for 3D, 2 for 2D"
-        );
-
         CmdLine::set_arg("algo:delaunay","default");
         CmdLine::set_arg("sys:multithread","false");
 
