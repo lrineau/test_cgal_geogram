@@ -253,6 +253,7 @@ static void bench_geogram(
         );
 
         CmdLine::set_arg("algo:delaunay","default");
+        CmdLine::set_arg("sys:multithread","false");
 
         if(
             !CmdLine::parse(
