@@ -321,7 +321,23 @@ static void bench_geogram(
 #endif // ONLY_CGAL
 
 #ifndef ONLY_GEOGRAM
-static void bench_cgal(
+
+template <typename Point_set>
+auto initialize_lock_ds(void*, const Point_set&)
+{
+  auto do_not_delete = [](void* ) {};
+  return std::unique_ptr<void, decltype(do_not_delete)>{nullptr, do_not_delete};
+}
+
+template <typename Lock_ds, typename Point_set>
+auto initialize_lock_ds(Lock_ds*, const Point_set& ps)
+{
+  return std::make_unique<Lock_ds>(
+      CGAL::bbox_3(ps.points().begin(), ps.points().end()), 50);
+}
+
+template <typename Parallel_policy>
+void bench_cgal(
 #if USE_GOOGLE_BENCHMARK
                        benchmark::State& state
 #else
@@ -330,10 +346,14 @@ static void bench_cgal(
 )
 {
     std::string points_filename = argv[1];
-    typedef CGAL::Exact_predicates_inexact_constructions_kernel K;
-    typedef CGAL::Delaunay_triangulation_3<K>      Triangulation;
-    typedef Triangulation::Point          Point;
-    typedef CGAL::Point_set_3<Point> Point_set;
+    using K = CGAL::Exact_predicates_inexact_constructions_kernel;
+    using Tds = CGAL::Triangulation_data_structure_3<
+        CGAL::Triangulation_vertex_base_3<K>,
+        CGAL::Delaunay_triangulation_cell_base_3<K>, Parallel_policy>;
+    using Triangulation =  CGAL::Delaunay_triangulation_3<K, Tds>;
+    using Lock_ds = typename Triangulation::Lock_data_structure;
+    using Point = typename Triangulation::Point;
+    using Point_set = CGAL::Point_set_3<Point>;
 
     CGAL::get_default_random() = CGAL::Random(0);
 
@@ -346,7 +366,9 @@ static void bench_cgal(
     {
       timer.reset();
       timer.start();
-      Triangulation tr ( ps.points().begin(), ps.points().end());
+      // `Lock_ds` is `void` when `Parallel_policy` is `Sequential`.
+      auto lock_ds = initialize_lock_ds(static_cast<Lock_ds *>(nullptr), ps);
+      Triangulation tr(ps.points().begin(), ps.points().end(), lock_ds.get());
       CGAL_USE(tr);
       timer.stop();
     }
@@ -355,8 +377,11 @@ static void bench_cgal(
     // CGAL::export_triangulation_3_to_off(off_stream, tr);
 }
 #  ifdef USE_GOOGLE_BENCHMARK
-     BENCHMARK(bench_cgal)->Unit(benchmark::kMillisecond);
-#endif
+     BENCHMARK_TEMPLATE(bench_cgal, CGAL::Sequential_tag)->Unit(benchmark::kMillisecond);
+#    if CGAL_LINKED_WITH_TBB
+       BENCHMARK_TEMPLATE(bench_cgal, CGAL::Parallel_tag)->Unit(benchmark::kMillisecond);
+#    endif
+#  endif
 #endif // !ONLY_GEOGRAM
 
 int main(int argc, char** argv) {
@@ -381,7 +406,7 @@ int main(int argc, char** argv) {
   | CGAL PART |
   -------------*/
 #  ifndef USE_GOOGLE_BENCHMARK
-  bench_cgal();
+  bench_cgal<CGAL::Sequential>();
 #  endif
 #endif // !ONLY_GEOGRAM
 #if USE_GOOGLE_BENCHMARK
